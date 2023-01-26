@@ -1,0 +1,565 @@
+---
+title: "Determinants of Pay across Top Tech Companies"
+output: html_document
+date: "2023-01-26"
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+## Section 1. Introduction
+Tech has become a hot topic in the recent years. An article by [Forbes](https://www.forbes.com/sites/jackkelly/2022/03/23/hired-report-shows-the-tech-job-market-is-blazing-hot-salaries-rising-and-businesses-recruiting-remotely-to-keep-up-with-demand/?sh=3f9899063655) explains how the demand for tech talent increased during the COVID-19 pandemic and how companies have been adjusting to help meet this demand. One of the ways they have remained competitive is by offering high compensations. 
+
+Within tech, people are usually compensated in the form of a base salary, company stocks, bonuses, and additional company benefits. As a result, the tech industry has been known to be a lucrative one. Given that tech is quickly evolving, and people are becoming more open to sharing their pay information, websites like [Levels.fyi](https://www.levels.fyi/?compare=IBM,Fidelity%20Investments,Cisco&track=Software%20Engineer) have become an invaluable resource for people looking for information about how different tech jobs pay. However, it is important to note that the pay varies depending on different factors. This analysis uses data extracted from Levels.fyi and obtained through [Kaggle](https://www.kaggle.com/datasets/jackogozaly/data-science-and-stem-salaries). This project, therefore, aims to identify factors that determine the pay across different tech companies.
+
+Below is a list containing information about what each column in the dataset represents:
+
+- `timestamp`: when the data was recorded
+- `company`: company name
+- `level`: what level the observation is at
+- `title`: role title
+- `totalyearlycompensation`: total yearly compensation
+- `location`: job location
+- `yearsofexperience`: years of experience
+- `yearatcompany`: years of experience at said company
+- `tag`: tag
+- `basesalary`: base salary
+- `stockgrantvalue`: stock grant value
+- `bonus`: bonus
+- `gender`: gender
+- `otherdetails`: free from text field
+- `cityid`: city ID
+- `dmaid`: dmaid
+- `rowNumber`: Row Number
+- `Masters_Degree`: 1 if yes, 0 if not
+- `Bachelors_Degree`: 1 if yes, 0 if not
+- `Doctorate_Degree`: 1 if yes, 0 if not
+- `Highschool`: 1 if yes, 0 if not
+- `Some_College`: 1 if yes, 0 if not
+- `Race_Asian`: 1 if yes, 0 if not
+- `Race_White`: 1 if yes, 0 if not
+- `Race_Two_Or_More`: 1 if yes, 0 if not
+- `Race_Black`: 1 if yes, 0 if not
+- `Race_Hispanic`: 1 if yes, 0 if not
+- `Race`: race as a factor column
+- `Education`: education as a factor column
+
+## Section 2. Data analysis plan
+Since this data set has over 50,000 observations, it is important to find ways to make sure that it is workable. To achieve this,
+the following action items will be completed:
+
+1. Data wrangling
+2. Determining popular companies and roles and how compensation varies by each
+3. Design linear regression models
+
+## Section 3. Data
+
+```{r eval=TRUE, message=FALSE, echo=FALSE}
+library(tidyverse)
+library(scales)
+library(broom)
+library(qqplotr)
+```
+
+```{r load-data, echo=FALSE, include=FALSE}
+salaries_org <- read_csv("data/Levels_Fyi_Salary_Data.csv")
+states <- read_csv("data/states.csv")
+#spec(salaries)
+```
+
+Describing the data set: 
+There are `r nrow(salaries_org)` rows and `r ncol(salaries_org)` columns in this data set.
+
+Each row in the data set represents an individual employee at a given company.
+
+For the data wrangling, the following has been done:
+
+ 1. Removing unnecessary columns
+ 2. Renaming columns
+ 3. Separating location to city and state
+ 4. Separating timestamp
+ 5. Cleaning up company names
+ 6. Removing non-US regions (for this, a states dataset is used to match up the states)
+ 
+```{r clean-salary-dataframe, echo = FALSE}
+#Remove unnecessary columns
+salaries <- salaries_org %>%
+  select(-c(Some_College, dmaid, rowNumber, otherdetails))
+```
+
+
+```{r rename-columns, echo=FALSE}
+#Rename the necessary columns so that they start with lowercase letters for consistency
+salaries <- salaries %>%
+  rename(race = Race,
+         education = Education,
+         masters = Masters_Degree,
+         bachelors = Bachelors_Degree,
+         doctorate = Doctorate_Degree,
+         highschool = Highschool,
+         asian = Race_Asian,
+         white = Race_White,
+         black = Race_Black,
+         hispanic = Race_Hispanic)
+```
+
+
+```{r separate-timestamp, echo=FALSE}
+#Separating timestamp. The separate() will be based off the whitespace in `timestamp`. 
+salaries <- salaries %>%
+  separate(timestamp, c("date", "time"), sep = " ") %>%
+  select(-time)
+```
+
+
+```{r separate-location, echo=FALSE, include=FALSE}
+#Separating `location` into *city* and *state*. The separate() will be based off the comma in `location`. 
+salaries <- salaries %>%
+  separate(location, c("city", "state"), sep = ",")
+```
+
+
+```{r view-companies, echo=FALSE, include=FALSE}
+salaries %>%
+  group_by(company) %>%
+  count(company) %>%
+  arrange(company)
+```
+
+```{r rename-repeated-top-companies, echo=FALSE}
+#Renaming companies considered popular
+salaries_new <- salaries %>%
+  mutate(
+    company = case_when(
+      company %in% c("amazon", "Amazon", "AMazon", "AMAZON", "Amazon web services", "Amazon Web Services",
+                     "Amazon.com", "amzon", "Amzon", "Aws", "AWS") ~ "Amazon",
+      company %in% c("apple", "Apple", "APPLE", "Apple Inc.") ~ "Apple",
+      company %in% c("bytedance", "Bytedance", "ByteDance") ~ "Bytedance",
+      company %in% c("capital one", "Capital one", "Capital One") ~ "Capital One",
+      company %in% c("citadel", "Citadel") ~ "Citadel",
+      company %in% c("Coinbase") ~ "Coinbase",
+      company %in% c("Databricks") ~ "Databricks",
+      company %in% c("facebook", "Facebook") ~ "Facebook",
+      company %in% c(" Google", "google", "Google", "GOogle", "google llc", "Google LLC") ~ "Google", 
+      company %in% c("Hudson River Trading") ~ "Hudson River Trading",
+      company %in% c("intel", "Intel", "intel corporation", "Intel corporation", "Intel Corporation", "INTEL corporation") ~ 
+        "Intel",
+      company %in% c("Jane Street", "Jane Street Capital") ~ "Jane Street Capital",
+      company %in% c("jp morgan", "Jp Morgan", "JP morgan", "JP Morgan", "Jp morgan chase", "JP Morgan Chase",
+                    "Jpmorgan", "JPMorgan", "JPMORGAN", "JPmorgan Chase", "JPMorgan Chase") ~ "JPMorgan Chase",
+      company %in% c("linkedin", "Linkedin", "LinkedIn") ~ "LinkedIn",
+      company %in% c("lyft", "Lyft") ~ "Lyft",
+      company %in% c("microsoft", "Microsoft", "MIcrosoft", "MICROSOFT", "microsoft corporation", 
+                     "Microsoft Corporation") ~ "Microsoft",
+      company %in% c("Netflix") ~ "Netflix", 
+      company %in% c("oracle", "Oracle", "ORACLE") ~ "Oracle",
+      company %in% c("Roblox") ~ "Roblox",
+      company %in% c("salesforce", "Salesforce", "SalesForce") ~ "Salesforce",
+      company %in% c("Snap", "snapchat", "Snapchat") ~ "Snap",
+      company %in% c("Stripe") ~ "Stripe",
+      company %in% c("Two sigma", "Two Sigma") ~ "Two Sigma",
+      company %in% c("uber", "Uber", "UBER") ~ "Uber"
+    ) 
+  ) %>%
+  drop_na(company)
+```
+ 
+```{r state-cleaning, echo=FALSE}
+#trim the leading white spaces in the states names
+salaries_new <- salaries_new %>%
+  mutate(state = trimws(salaries_new$state, which = c("left")))
+```
+
+```{r remove-non-us, echo=FALSE, include=FALSE}
+salaries_new %>%
+  filter(!(state %in% states$abbreviation)) %>%
+  count(state) %>%
+  count(sum(n))
+```
+
+```{r all-us, echo=FALSE}
+#Update the dataset to exclude non-US regions
+salaries_new <- salaries_new %>%
+  filter(state %in% states$abbreviation)
+```
+
+### Popular Companies and Roles
+
+```{r popular-companies, echo=FALSE, include=FALSE}
+#Looking at the most popular companies from the new data set
+salaries_new %>%
+  group_by(company) %>%
+  count(company) %>%
+  arrange(desc(n))
+```
+
+The most popular companies are Amazon, Microsoft, Google, Facebook, Apple, Oracle, and Salesforce, while the least popular ones are Jane Street Capital and Hudson River Trading. We'll be focusing on the most popular companies. Below is a visualization that shows this distribution:
+
+```{r company-popularity, echo=FALSE}
+salaries_new %>%
+  mutate(company = fct_infreq(company)) %>%
+  ggplot(mapping = aes(y = company)) +
+  geom_bar() +
+  labs(x = "Count",
+       y = NULL,
+       title = "Distribution of Companies by Popularity")
+```
+
+Now that the popular tech companies have been identified, popular tech roles will also be examined.
+
+```{r tech-roles, echo=FALSE, include=FALSE}
+#Overview of the different roles within tech, arranged by descending order
+salaries_new %>%
+  group_by(title) %>%
+  count(title) %>%
+  arrange(desc(n))
+```
+
+The top 5 popular roles within this data set are Software Engineer, Product Manager, Software Engineering Manager, Hardware Engineer, and Data Scientist. On the other hand, the least popular role is Management Consultant.
+
+This breakdown can also be represented visually using a bar graph.
+
+```{r roles-visualization, echo=FALSE}
+salaries_new %>%
+  mutate(title = fct_infreq(title)) %>%
+  ggplot(salaries, mapping = aes(y = title)) +
+  geom_bar() +
+  labs(x = "Count",
+       y = NULL,
+       title = "Distribution of Tech Roles by Popularity")
+```
+
+### Compensation by Popular Roles
+
+Next, an analysis of the distribution of `totalyearlycompensation` across the top 5 most popular roles is done to get better insight on the pay distribution. To do this, outliers need to be identified so that the dataset does not have extreme high values. In this case, the outliers are the people earning more than $2000000 in `totalyearlycompensation`. Accounting for this results to the distribution shown below:
+
+```{r outliers, echo=FALSE, include=FALSE}
+#Identifying any outliers in terms of `totalyearlycompensation`: 
+salaries_new %>%
+  select(title, totalyearlycompensation, yearsofexperience, company) %>%
+  arrange(desc(totalyearlycompensation))
+```
+
+```{r removing-outliers, echo=FALSE}
+salaries_new <- salaries_new %>%
+  filter(totalyearlycompensation < 2000000)
+```
+
+
+```{r totalpay-by-role, echo=FALSE}
+#Creating a box-plot to visualize the distribution of pay across the top 5 roles.
+salaries_new %>%
+  filter(title == c("Software Engineer", "Product Manager", "Software Engineering Manager", "Data Scientist", "Hardware Engineer")) %>%
+  ggplot(mapping = aes(y = title, x = totalyearlycompensation)) +
+  geom_boxplot() +
+  labs(x = "Total Yearly Compensation",
+       y = NULL,
+       title = "Distribution of Total Yearly Compensation across Top Roles",
+       subtitle = "Visualization excludes compensation above $2000000")
+  
+```
+
+However, we first need to know what the median total compensation is for these roles in order to understand the boxplots. A summary of this, is shown below. Interestingly enough, we can see that in some cases a lack of popularity within a role does not mean it offers lower compensation. For example in this case, roles like Technical Program Manager, Solutions Architect, Sales, Product Designer, and Management Consultant ranked lower than Software Engineer and Hardware Engineer while Management Consultant ranked lower than Data Scientist in terms of popularity, but they rank higher than the aforementioned popular in terms of median pay.
+
+```{r median-totalcomp, echo=FALSE}
+salaries_new %>% 
+  group_by(title) %>%
+  summarize(median_pay = median(totalyearlycompensation)) %>%
+  arrange(desc(median_pay))
+```
+
+Notice that even after filtering the outliers, there are still some significant outliers within the box-plot. Therefore, we need to understand how the pay varies by company for each role. 
+
+#### a) Software Engineer
+
+```{r sofware-engineer, echo=FALSE, warning=FALSE}
+salaries_new %>%
+  filter(title == "Software Engineer") %>%
+  filter(company == c("Amazon", "Microsoft", "Google", "Facebook", "Apple", "Oracle")) %>%
+  ggplot(mapping = aes(y = company, x = totalyearlycompensation)) +
+    geom_boxplot() +
+    labs(y = NULL,
+         title = "Distribution of Software Engineer Pay by Company",
+         subtitle = "Visualization excludes non-US regions and compensation above $2000000") +
+    scale_x_continuous(name = "Total Yearly Compensation", labels = comma)
+```
+
+```{r swe-median-pay, echo=FALSE, warning=FALSE}
+salaries_new %>%
+  filter(title == "Software Engineer") %>%
+  filter(company == c("Amazon", "Microsoft", "Google", "Facebook", "Apple", "Oracle")) %>%
+  group_by(company) %>%
+  summarize(median_pay = median(totalyearlycompensation)) %>%
+  arrange(desc(median_pay))
+```
+
+For a software engineer, the median pay is the highest at Facebook and the lowest at Microsoft
+
+
+#### b) Software Engineering Manager
+
+```{r sofware-engineering-manager, echo=FALSE, warning=FALSE}
+salaries_new %>%
+  filter(title == "Software Engineering Manager") %>%
+  filter(company == c("Amazon", "Microsoft", "Google", "Facebook", "Apple", "Oracle")) %>%
+  ggplot(mapping = aes(y = company, x = totalyearlycompensation)) +
+    geom_boxplot() +
+    labs(x = "Total Yearly Compensation",
+         y = NULL,
+         title = "Distribution of Software Engineering Manager Pay by Company",
+         subtitle = "Visualization excludes non-US regions and compensation above $2000000") +
+    scale_x_continuous(name = "Total Yearly Compensation", labels = comma)
+```
+
+```{r swem-median-pay, echo=FALSE, warning=FALSE}
+salaries_new %>%
+  filter(title == "Software Engineering Manager") %>%
+  filter(company == c("Amazon", "Microsoft", "Google", "Facebook", "Apple", "Oracle")) %>%
+  group_by(company) %>%
+  summarize(median_pay = median(totalyearlycompensation)) %>%
+  arrange(desc(median_pay))
+```
+
+For a software engineering manager, the median pay is the highest at Facebook and the lowest at Microsoft
+
+#### c) Product Manager
+
+```{r product-manager, echo=FALSE, warning=FALSE}
+salaries_new %>%
+  filter(title == "Product Manager") %>%
+  filter(company == c("Amazon", "Microsoft", "Google", "Facebook", "Apple", "Oracle")) %>%
+  ggplot(mapping = aes(y = company, x = totalyearlycompensation)) +
+    geom_boxplot() +
+    labs(y = NULL,
+         title = "Distribution of Product Manager Pay by Company",
+         subtitle = "Visualization excludes non-US regions and compensation above $2000000") +
+    scale_x_continuous(name = "Total Yearly Compensation", labels = comma)
+```
+
+```{r pm-median-pay, echo=FALSE, warning=FALSE}
+salaries_new %>%
+  filter(title == "Product Manager") %>%
+  filter(company == c("Amazon", "Microsoft", "Google", "Facebook", "Apple", "Oracle")) %>%
+  group_by(company) %>%
+  summarize(median_pay = median(totalyearlycompensation)) %>%
+  arrange(desc(median_pay))
+```
+
+For a product manager, the median pay is the highest at Google and the lowest at Microsoft
+
+#### d) Hardware Engineer
+
+```{r hardware-engineer, echo=FALSE, warning=FALSE}
+salaries_new %>%
+  filter(title == "Hardware Engineer") %>%
+  filter(company == c("Amazon", "Microsoft", "Google", "Facebook", "Apple", "Oracle")) %>%
+  ggplot(mapping = aes(y = company, x = totalyearlycompensation)) +
+    geom_boxplot() +
+    labs(y = NULL,
+         title = "Distribution of Hardware Engineer Pay by Company",
+         subtitle = "Visualization excludes non-US regions and compensation above $2000000") +
+    scale_x_continuous(name = "Total Yearly Compensation", labels = comma)
+```
+
+```{r he-median-pay, echo=FALSE, warning=FALSE}
+salaries_new %>%
+  filter(title == "Hardware Engineer") %>%
+  filter(company == c("Amazon", "Microsoft", "Google", "Facebook", "Apple", "Oracle")) %>%
+  group_by(company) %>%
+  summarize(median_pay = median(totalyearlycompensation)) %>%
+  arrange(desc(median_pay))
+```
+
+For a hardware engineer, the median pay is the highest at Facebook and the lowest at Microsoft. Looking closely at the side by side boxplots and the table, Oracle can be seen missing. This means that there is no data available for the pay of a hardware engineer at Oracle in the US.
+
+#### e) Data Scientist
+
+```{r data-scientist, echo=FALSE, warning=FALSE}
+salaries_new %>%
+  filter(title == "Data Scientist") %>%
+  filter(company == c("Amazon", "Microsoft", "Google", "Facebook", "Apple", "Oracle")) %>%
+  ggplot(mapping = aes(y = company, x = totalyearlycompensation)) +
+    geom_boxplot() +
+    labs(y = NULL,
+         title = "Distribution of Data Scientist Pay by Company",
+         subtitle = "Visualization excludes non-US regions and compensation above $2000000") +
+    scale_x_continuous(name = "Total Yearly Compensation", labels = comma)
+```
+
+```{r ds-median-pay, echo=FALSE, warning=FALSE}
+salaries_new %>%
+  filter(title == "Data Scientist") %>%
+  filter(company == c("Amazon", "Microsoft", "Google", "Facebook", "Apple", "Oracle")) %>%
+  group_by(company) %>%
+  summarize(median_pay = median(totalyearlycompensation)) %>%
+  arrange(desc(median_pay))
+```
+For a data scientist, the median-pay is the highest at Apple and the lowest at Oracle.
+
+From the analyses, we can see that the median-pay is highest at Facebook for Software Engineer, Software Engineering Manager and Hardware Engineer, at Google for a Product Manager role, at Apple for a Data Scientist role. This means that it is likely that for people interested in the top 5 tech roles and had high compensation as their leading priority, they could consider different companies depending on the role. That said, there could be other factors that determine the pay for these roles.
+
+### Fitting Linear Models and Testing other Predictors of Pay
+
+We then want plot scatterplots to see if there is any corelation between some of the quantitive variables
+
+#### a) A Single Quantitative Variable 
+
+Most people believe that with time, ones pay increases because they are gaining more experience by the year. We are going to test this claim by comparing how `totalyearlycompensation` varies by `yearsofexperience`. 
+
+We begin by creating the scatter plot shown below and fitting a linear model to the visualization.
+
+```{r comp-exp-general, echo=FALSE}
+salaries_new %>%
+  filter(title == c("Software Engineer", "Product Manager", "Software Engineering Manager", "Data Scientist", "Hardware Engineer")) %>%
+  ggplot(mapping = aes(x = yearsofexperience, y = totalyearlycompensation, color = title)) +
+  geom_jitter(alpha = 0.4) +
+  geom_smooth(method = "lm", se = FALSE, color = "purple") +
+  labs(x = "Years of Experience",
+       title = "Distribution of Total Yearly Compensation by Experience",
+       subtitle = "Visualization excludes non-US regions and compensation above $2000000") +
+  scale_y_continuous(name = "Total Yearly Compensation", labels = comma)
+
+salaries_new_lm <- lm(totalyearlycompensation ~ yearsofexperience, data = salaries_new)
+salaries_new_lm
+```
+
+From the scatterplot, there appears to be strong, positive, linear relationship between `totalyearlycompensation` and `yearsofexperience`. It also appears that there are a few potential outliers. 
+
+The linear regression model that predicts `totalyearlycompensation` from `yearofexperience` is:
+
+$\widehat{totalyearlycompensation} = 181819 + 11513 yearsofexperience$
+
+In this context, the slope means that for each additional 1 year of experience, we expect to see about 11513 increase in the total yearly compensation. On the other hand, the intercept means that for a person with 0 years of experience, we expect the total yearly compensation to be $181819.
+
+Next, we determine the $R^2$ whose value is found to be 0.2449. This means that about 24.49% of the variation in total yearly compensation can be explained by the relationship between `totalyearlycompensation` and `yearsofexperience`. In addition, the adjusted $R^2$ is 0.2449 -- this value will be referenced later.
+
+```{r r-sq, echo=FALSE, include=FALSE}
+summary(salaries_new_lm)
+```
+
+Since linear models have assumptions, we need to check for linearity, independence, normality, and constant variance to determine the extent to which `yearsofexperience` is a good predictor of `totalyearlycompensation`
+
+```{r res-plot, echo=FALSE}
+#checking for linearity, independence, and constance variance
+salaries_new_lm_aug <- augment(salaries_new_lm) 
+ggplot(salaries_new_lm_aug, mapping = aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "orange", lty = 2) +
+  labs (
+    title = "Residual Plot for Total Yearly Compensation",
+    subtitle = "Plot excludes non_US regions and compensation above $2000000"
+  ) +
+  scale_y_continuous(name = "Residuals", labels = comma) +
+  scale_x_continuous(name = "Predicted Total Yearly Compensation", labels = comma)
+
+```
+
+This model can be seen to be a good fit for the salaries data because there is a random scatter of points around 0, no obvious patterns are being detected, and the variance looks constant i.e. the residuals do not form a fan shape. 
+
+```{r resid-hist, echo = FALSE}
+#Checking for normality
+ggplot(salaries_new_lm_aug, mapping = aes(x = .resid)) +
+  geom_histogram() +
+  labs(x = "Residuals",
+       y = "Count",
+       title = "Residuals Histogram",
+       subtitle = "Plot excludes non-US regions and compensation above $2000000")
+```
+
+The histogram is almost evenly distributed around 0. This shows that the normality assumption is likely to be true. A Q-Q plot can also be used for a test of normality as illustrated below.
+
+```{r qq-plot, echo=FALSE}
+ggplot(salaries_new_lm_aug, mapping = aes(sample = .resid)) +
+  stat_qq_point(size = 2, color = "blue") +
+  stat_qq_line(color = "orange") +
+  xlab("Theoretical Quantiles") + ylab("Sample Quantiles") +
+  labs (title = "Normal Probability Plot for Total Yearly Compensation",
+        subtitle = "Plot excludes non-US regions and compensation above $2000000"
+        )
+```
+
+The residuals do not appear to be normally distributed. Some points fall on the diagonal while the rest of them are significantly deviating from the diagonal, with the most deviation happening on the top right. Because this observation is slightly different from what was observed in the histogram, we determine the p-value.
+
+This value is 0 which is less than 0.05 meaning that we fail to accept the null hypothesis and conclude that there is enough evidence to suggest that there is a real association between `totalyearlycompensation` and `yearsofexperience`. In addition to this, reporting a 95% confidence interval for the slope tells us that we are 95% confident that years of experience is between 11271.97 and 11753.21--this interval does not include 0, which confirms our hypothesis.
+
+```{r p-value, echo=FALSE, include=FALSE}
+tidy(salaries_new_lm)
+```
+
+```{r confint, echo=FALSE, include=FALSE}
+confint(salaries_new_lm)
+```
+
+
+#### b) Multiple Predictors
+
+`yearsofexperience` is not the only predictor of `totalyearlycompensation`. It is likely that `yearsatcompany`, `gender`, `bachelors`, `masters`, `doctorate`, and `highschool` are also predictors. However,`yearsatcompany` does not seem like a good predictor of `totalyearlycompensation` because from the scatter plot below, the relationship is seen as weak, positive, and non-linear (it is fan-shaped). As a result, the variable will be excluded from the multiple predictors model.
+
+```{r comp-company-years, echo=FALSE}
+salaries_new %>%
+  filter(title == c("Software Engineer", "Product Manager", "Software Engineering Manager", "Data Scientist", "Hardware Engineer")) %>%
+  ggplot(mapping = aes(x = totalyearlycompensation, y = yearsatcompany, color = title)) +
+  geom_jitter(alpha = 0.4) +
+  labs(x = "Total Yearly Compensation",
+       y = "Years at Company",
+       title = "Distribution of Total Yearly Compensation by Years at Company",
+       subtitle = "Visualization excludes non-US regions and compensation above $2000000")
+```
+
+
+We can fit a model with the remaining predictors as shown below. After fitting the model, the adjusted $R^2$ is now 0.2584, compared to the previous 0.2449, which means that the additional factors in the current model have an impact on `totalyearlycompensation`.
+
+```{r multiple-model, echo=FALSE, include=FALSE}
+salaries_new_lm2 <- lm(totalyearlycompensation ~ yearsofexperience + gender + bachelors + masters + doctorate + highschool
+                       + asian + white + black + hispanic, data = salaries_new)
+tidy(salaries_new_lm2)
+glance(salaries_new_lm2)$adj.r.squared
+```
+
+We can then use backward selection to determine the best model.
+
+```{r best-fit, echo=FALSE, include=FALSE}
+selected_model <- step(salaries_new_lm2, direction = "backward")
+tidy(selected_model) %>% select(term, estimate, p.value)
+
+glance(selected_model)
+```
+
+The best linear model is:
+
+$\widehat{totalyearlycompensation} = 164655.441 + 10836.119 yearsofexperience + 20752.972 genderMale + 48960.781 genderOther + 3645.996 masters + 72858.758 doctorate - 3899.715 asian - 14206.814 white - 37127.066 black - 32699.625 hispanic$ 
+
+At this point, we can design a final model to describe the nature of `totalyearlycompensation`. Doing so brings us to the following conclusions:
+
+```{r final-model, echo=FALSE, include = FALSE}
+salaries_final <- lm(totalyearlycompensation ~ yearsofexperience + gender + masters + doctorate + asian + white + black + hispanic,
+                     data = salaries_new)
+tidy(salaries_final)
+glance(salaries_final)
+```
+
+- all else held constant, a person's total years of experience is predicted to increase their total yearly compensation by about $10836.12
+
+- all else held constant, a male person is predicted to predicted to have higher total pay than a female by about $20752.97
+
+- all else held constant, a person of another gender (not listed) is predicted to have a higher total yearly compensation than a person who is not of another gender by about $48960.78
+
+- all else held constant, a masters degree is predicted to increase a person's total yearly compensation by about $3646
+
+- all else held constant, a doctorate degree is predicted to increase a person's total yearly compensation by about $72858.76
+
+- all else held constant, an asian person is predicted to have a lower total yearly compensation by about $3899.72
+
+- all else held constant, a white person is predicted to have a lower total yearly compensation by about $14206.81
+
+- all else held constant, a black person is predicted to have a lower total yeary compensation by about $37127.07
+
+- all else held constant, a hispanic person is predicted to have a lower total yearly compensation by about $32699.63
+
+
+## Section 4: Conclusion
+
+Ultimately, performing advanced analytics on the dataset has provided more insight on different variables interact with each other. It is clear that factors like total years of experience, gender, education level, and ethnicity are predictors of the total yearly compensation across the popular tech roles. That said, there are other factors like a company's location and the levels associated with each role that can be used to predict the total pay, which have not been addressed in this analysis. If I was to do the project differently, I would focus more on each role individually to determine if there would be any variations especially with the linear model. In addition, I would pay attention to the distribution of pay across city and state as well as review the base salaries and compensations because those two vary from company to company. At a personal level, doing this project has given me more insights on the factors that affect total pay at top tech companies. for sure, there is more I can do.
+
+
