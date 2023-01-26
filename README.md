@@ -1,4 +1,4 @@
-# DS210-Project-Proposal
+# Project-Proposal
 
 This dataset is from [Kaggle](https://www.kaggle.com/datasets/jackogozaly/data-science-and-stem-salaries)
 
