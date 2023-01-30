@@ -1,5 +1,6 @@
 ---
 title: "Determinants of Pay across Top Tech Companies"
+author: "Wanjiru Mambo"
 output: html_document
 date: "2023-01-26"
 ---
@@ -73,7 +74,9 @@ There are `r nrow(salaries_org)` rows and `r ncol(salaries_org)` columns in this
 
 Each row in the data set represents an individual employee at a given company.
 
-For the data wrangling, the following has been done:
+### Data Wrangling
+
+For the data wrangling, the following have been done:
 
  1. Removing unnecessary columns
  2. Renaming columns
@@ -128,7 +131,7 @@ salaries %>%
 ```
 
 ```{r rename-repeated-top-companies, echo=FALSE}
-#Renaming companies considered popular
+#Renaming companies considered popular i.e. names have to match
 salaries_new <- salaries %>%
   mutate(
     company = case_when(
@@ -172,6 +175,7 @@ salaries_new <- salaries_new %>%
 ```
 
 ```{r remove-non-us, echo=FALSE, include=FALSE}
+#removing non-us regions
 salaries_new %>%
   filter(!(state %in% states$abbreviation)) %>%
   count(state) %>%
@@ -560,10 +564,7 @@ glance(salaries_final)
 
 ## Section 4: Conclusion
 
-Ultimately, performing advanced analytics on the dataset has provided more insight on different variables interact with each other. It is clear that factors like total years of experience, gender, education level, and ethnicity are predictors of the total yearly compensation across the popular tech roles. That said, there are other factors like a company's location and the levels associated with each role that can be used to predict the total pay, which have not been addressed in this analysis. If I was to do the project differently, I would focus more on each role individually to determine if there would be any variations especially with the linear model. In addition, I would pay attention to the distribution of pay across city and state as well as review the base salaries and compensations because those two vary from company to company. At a personal level, doing this project has given me more insights on the factors that affect total pay at top tech companies. let's see where this goes.
-again
-again
-again
+Ultimately, performing advanced analytics on the dataset has provided more insight on different variables interact with each other. It is clear that factors like total years of experience, gender, education level, and ethnicity are predictors of the total yearly compensation across the popular tech roles. That said, there are other factors like a company's location and the levels associated with each role that can be used to predict the total pay, which have not been addressed in this analysis. If I was to do the project differently, I would focus more on each role individually to determine if there would be any variations especially with the linear model. In addition, I would pay attention to the distribution of pay across city and state as well as review the base salaries and compensations because those two vary from company to company. At a personal level, doing this project has given me more insights on the factors that affect total pay at top tech companies.
 
 
 
